@@ -1,29 +1,79 @@
 'use client'
 
 import { Search } from "lucide-react";
+import { useState, useEffect } from "react";
 
-const mockUser = {
-  initials: "LT",
-  name: "Linus Torvalds",
-  handle: "@torvalds",
-  location: "Helsinki, Finland",
-  bio: "Creator of Linux kernel and Git. Sometimes I swear at people on the internet.",
-  tags: ["LINUX", "GIT", "C", "OPEN SOURCE"],
-  stats: [
-    { value: "256", label: "REPOS" },
-    { value: "219K", label: "FOLLOWERS" },
-    { value: "48", label: "FOLLOWING" },
-    { value: "1991", label: "MEMBER SINCE" },
-  ],
-  repos: [
-    { name: "linux", lang: "C", stars: "182.4K" },
-    { name: "git", lang: "C", stars: "52.1K" },
-    { name: "subsurface", lang: "C++", stars: "2.3K" },
-    { name: "uemacs", lang: "C", stars: "489" },
-  ],
-};
+
 
 export default function Home() {
+  // Initialize user as null to handle the "no data" state properly
+  let [user, setUser] = useState(null)
+  let [userInput, setUserInput] = useState("");
+  let [userName, setUserName] = useState('')
+
+  // Effect to handle the async data fetching whenever userName changes
+  useEffect(() => {
+    if (!userName) return;
+
+    // We use an async IIFE or a named function to handle the Promise result
+    async function loadData() {
+      const data = await fetchUser(userName);
+      setUser(data);
+    }
+    
+    loadData();
+  }, [userName])
+
+  /**
+   * Fetches user data and their repositories from GitHub API.
+   * Transforms the raw response into the structure expected by the UI.
+   */
+  async function fetchUser(input) {
+    try {
+      // 1. Fetch user profile
+      const userRes = await fetch(`https://api.github.com/users/${input}`);
+      if (!userRes.ok) return null;
+      const userData = await userRes.json();
+
+      // 2. Fetch user repositories
+      const repoRes = await fetch(`https://api.github.com/users/${input}/repos?sort=updated&per_page=5`);
+      const repoData = await repoRes.json();
+
+      // 3. Transform data to match UI requirements
+      return {
+        name: userData.name || userData.login,
+        handle: `@${userData.login}`,
+        location: userData.location || "Earth",
+        bio: userData.bio || "No bio provided.",
+        initials: (userData.name || userData.login).substring(0, 2).toUpperCase(),
+        // Mocking tags based on languages or default values
+        tags: Array.from(new Set(repoData.map(r => r.language).filter(Boolean))).slice(0, 3),
+        // Mapping metrics to the stats array
+        stats: [
+          { label: "REPOS", value: userData.public_repos },
+          { label: "FOLLOWERS", value: userData.followers },
+          { label: "FOLLOWING", value: userData.following },
+          { label: "GISTS", value: userData.public_gists }
+        ],
+        // Formatting repositories
+        repos: repoData.map(repo => ({
+          name: repo.name,
+          lang: repo.language || "Plain",
+          stars: repo.stargazers_count
+        }))
+      };
+    } catch (error) {
+      console.error("Fetch failed:", error);
+      return null;
+    }
+  }
+
+  function handleSubmit() {
+    // Trigger the search by updating userName
+    setUserName(userInput.trim())
+  }
+
+
   return (
     <div className="min-h-screen bg-[#050f05] flex items-center justify-center p-6 font-mono">
       <style>{`
@@ -75,88 +125,113 @@ export default function Home() {
           <span className="font-vt323 text-[#00ff3c] text-lg glow-text">C:\GIT&gt;</span>
           <input
             type="text"
-            defaultValue="torvalds"
+            value={userInput} // Controlled input
+            onChange={(e) => {
+              setUserInput(e.target.value)
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} // Allow Enter to search
             placeholder="search username..."
             className="flex-1 bg-transparent border-none outline-none text-[#00cc30] text-[15px] font-share placeholder:text-[#1c4a1c] caret-[#00ff3c]"
           />
-          <button className="flex items-center gap-2 bg-[#003d0f] border border-[#00cc30] text-[#00ff3c] text-[12px] tracking-widest px-3 py-1.5 rounded-sm hover:bg-[#005a18] transition-colors glow-text-sm cursor-pointer">
+          <button onClick={handleSubmit} className="flex items-center gap-2 bg-[#003d0f] border border-[#00cc30] text-[#00ff3c] text-[12px] tracking-widest px-3 py-1.5 rounded-sm hover:bg-[#005a18] transition-colors glow-text-sm cursor-pointer">
             <Search size={13} />
-            EXEC
+            EXECUTE
           </button>
         </div>
 
         {/* Section Label */}
         <p className="text-[11px] text-[#2a6e2a] tracking-[3px] uppercase mb-3">// PROFILE RECORD</p>
 
-        {/* Profile Card */}
-        <div className="flex gap-4 border border-[#1c3a1c] rounded bg-[#050f05] p-4 mb-4">
-          <div className="w-[72px] h-[72px] shrink-0 border border-[#00cc30] rounded-sm bg-[#021002] flex items-center justify-center font-vt323 text-[28px] text-[#00ff3c] glow-box glow-text">
-            {mockUser.initials}
-          </div>
-          <div>
-            <p className="font-vt323 text-[28px] text-[#00ff3c] tracking-[2px] leading-tight glow-text">
-              {mockUser.name}
-            </p>
-            <p className="text-[12px] text-[#2a7a2a] tracking-wide mt-0.5 mb-2">
-              {mockUser.handle} · {mockUser.location}
-            </p>
-            <p className="text-[13px] text-[#00aa28] leading-relaxed mb-2">{mockUser.bio}</p>
-            <div className="flex flex-wrap gap-2">
-              {mockUser.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-[11px] text-[#00cc30] border border-[#1c5a1c] bg-[#021a06] px-2 py-0.5 rounded-sm tracking-wide"
-                >
-                  {tag}
-                </span>
-              ))}
+        {user ? (
+          <>
+            {/* Profile Card */}
+            <div className="flex gap-4 border border-[#1c3a1c] rounded bg-[#050f05] p-4 mb-4">
+              <div className="w-[72px] h-[72px] shrink-0 border border-[#00cc30] rounded-sm bg-[#021002] flex items-center justify-center font-vt323 text-[28px] text-[#00ff3c] glow-box glow-text">
+                {user.initials}
+              </div>
+              <div>
+                <p className="font-vt323 text-[28px] text-[#00ff3c] tracking-[2px] leading-tight glow-text">
+                  {user.name}
+                </p>
+                <p className="text-[12px] text-[#2a7a2a] tracking-wide mt-0.5 mb-2">
+                  {user.handle} · {user.location}
+                </p>
+                <p className="text-[13px] text-[#00aa28] leading-relaxed mb-2">{user.bio}</p>
+                <div className="flex flex-wrap gap-2">
+                  {user.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="text-[11px] text-[#00cc30] border border-[#1c5a1c] bg-[#021a06] px-2 py-0.5 rounded-sm tracking-wide"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <p className="text-[11px] text-[#2a6e2a] tracking-[3px] uppercase mb-3">// SYSTEM METRICS</p>
-        <div className="grid grid-cols-4 gap-2.5 mb-4">
-          {mockUser.stats.map((stat) => (
-            <div
-              key={stat.label}
-              className="border border-[#1c3a1c] bg-[#050f05] rounded-sm py-3 text-center"
-            >
-              <span className="font-vt323 text-[26px] text-[#00ff3c] glow-text leading-none block">
-                {stat.value}
+            <StatsComponent user={user} />
+
+            {/* Status Bar */}
+            <div className="flex justify-between text-[10px] text-[#1c5a1c] tracking-[2px] mt-5 pt-3 border-t border-[#0f2a0f]">
+              <span>CONNECTED · GITHUB_API</span>
+              <span>RECORDS: {user.repos.length} OF {user.stats[0].value}</span>
+              <span>
+                MEM: 640K OK<span className="blink">_</span>
               </span>
-              <p className="text-[10px] text-[#2a6e2a] tracking-[2px] mt-1">{stat.label}</p>
             </div>
-          ))}
-        </div>
+          </>
+        ) : (
+          <div className="border border-[#1c3a1c] rounded bg-[#050f05] p-10 text-center">
+            <p className="font-vt323 text-[#2a6e2a] text-lg tracking-[2px]">
+              NO RECORD LOADED. PLEASE EXECUTE SEARCH.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-        {/* Divider */}
-        <hr className="border-t border-[#0f2a0f] my-4" />
+/**
+ * Component to display user metrics and repository index.
+ * Receives the formatted user object as a prop.
+ */
+function StatsComponent({ user }) {
+  return (
+    <div>
+      <p className="text-[11px] text-[#2a6e2a] tracking-[3px] uppercase mb-3">// SYSTEM METRICS</p>
+      <div className="grid grid-cols-4 gap-2.5 mb-4">
+        {user.stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="border border-[#1c3a1c] bg-[#050f05] rounded-sm py-3 text-center"
+          >
+            <span className="font-vt323 text-[26px] text-[#00ff3c] glow-text leading-none block">
+              {stat.value}
+            </span>
+            <p className="text-[10px] text-[#2a6e2a] tracking-[2px] mt-1">{stat.label}</p>
+          </div>
+        ))}
+      </div>
 
-        {/* Repos */}
-        <p className="text-[11px] text-[#2a6e2a] tracking-[3px] uppercase mb-3">// REPOSITORY INDEX</p>
-        <div className="flex flex-col gap-2.5">
-          {mockUser.repos.map((repo) => (
-            <div
-              key={repo.name}
-              className="flex items-center gap-3 border border-[#1c3a1c] bg-[#050f05] rounded-sm px-3.5 py-3 hover:border-[#2a6e2a] transition-colors cursor-default"
-            >
-              <div className="w-2 h-2 rounded-full bg-[#00cc30] shrink-0 glow-box" />
-              <span className="flex-1 text-[14px] text-[#00ff3c] tracking-wide">{repo.name}</span>
-              <span className="text-[11px] text-[#2a7a2a] tracking-wide w-12 text-right">{repo.lang}</span>
-              <span className="text-[11px] text-[#2a6e2a] tracking-wide w-14 text-right">★ {repo.stars}</span>
-            </div>
-          ))}
-        </div>
+      {/* Divider */}
+      <hr className="border-t border-[#0f2a0f] my-4" />
 
-        {/* Status Bar */}
-        <div className="flex justify-between text-[10px] text-[#1c5a1c] tracking-[2px] mt-5 pt-3 border-t border-[#0f2a0f]">
-          <span>CONNECTED · MOCK_DB</span>
-          <span>RECORDS: {mockUser.repos.length} OF {mockUser.stats[0].value}</span>
-          <span>
-            MEM: 640K OK<span className="blink">_</span>
-          </span>
-        </div>
+      {/* Repositories List */}
+      <p className="text-[11px] text-[#2a6e2a] tracking-[3px] uppercase mb-3">// REPOSITORY INDEX</p>
+      <div className="flex flex-col gap-2.5">
+        {user.repos.map((repo) => (
+          <div
+            key={repo.name}
+            className="flex items-center gap-3 border border-[#1c3a1c] bg-[#050f05] rounded-sm px-3.5 py-3 hover:border-[#2a6e2a] transition-colors cursor-default"
+          >
+            <div className="w-2 h-2 rounded-full bg-[#00cc30] shrink-0 glow-box" />
+            <span className="flex-1 text-[14px] text-[#00ff3c] tracking-wide">{repo.name}</span>
+            <span className="text-[11px] text-[#2a7a2a] tracking-wide w-12 text-right">{repo.lang}</span>
+            <span className="text-[11px] text-[#2a6e2a] tracking-wide w-14 text-right">★ {repo.stars}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
